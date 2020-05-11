@@ -1,0 +1,193 @@
+<html>
+
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width,initial-scale=1.0">
+    <title>Wing</title>
+    <script src="./libs/jquery-2.2.4.min.js"></script>
+    <script src="./libs/jquery.gridster.min.js"></script>
+    <script src="./libs/mustache.min.js"></script>
+    <script src="./libs/echarts-4.1.0.min.js"></script>
+    <script src="./libs/layer/layer.js"></script>
+    <script src="./libs/numeral.min.js"></script>
+    <!-- ThreeJS 可视化运行环境 -->
+    <script src="./libs/three/three.min.js"></script>
+    <script src="./libs/three/tweenjs.min.js"></script>
+    <script src="./libs/three/cannon.min.js"></script>
+    <script src="./libs/three/dat.gui.js"></script>
+    <script src="./libs/three/TrackballControls.js"></script>
+    <script src="./libs/three/Detector.js"></script>
+    <script src="./libs/three/Stats.js"></script>
+    <script src="./libs/three/smoothie.js"></script>
+
+    <script src="./core/Wing.js"></script>
+    <style>
+        body,p {
+            padding: 0;
+            margin: 0;
+        }
+        .canvas {
+            position: absolute;
+            left: 0;
+            top: 0;
+            right: 0;
+            bottom: 30px;
+        }
+        .menu {
+            position: absolute;
+            bottom: 0;
+            padding: 4px;
+        }
+        .menu>button {
+            margin-left: 5px;
+        }
+    </style>
+</head>
+
+<body>
+    <div class="canvas"></div>
+    <div class="menu"></div>
+    <script>
+        // 初始化场景
+        var config = {id: "test"}
+        var canvas = $('.canvas')[0]
+        var sc = $.addScene(config.id, canvas);
+        var size = 1;
+
+        var world = sc.getWorld();
+
+        world.gravity.set(0, 0, -50);
+        world.broadphase = new CANNON.NaiveBroadphase();
+        world.solver.iterations = 5;
+
+        world.defaultContactMaterial.contactEquationStiffness = 5e6;
+        world.defaultContactMaterial.contactEquationRelaxation = 10;
+
+        // Since we have many bodies and they don't move very much, we can use the less accurate quaternion normalization
+        world.quatNormalizeFast = true;
+        world.quatNormalizeSkip = 3; // ...and we do not have to normalize every step.
+
+        // ground plane
+        var groundShape = new CANNON.Plane(new CANNON.Vec3(0, 0, 1));
+        var groundBody = new CANNON.Body({ mass: 0 });
+        groundBody.addShape(groundShape);
+        groundBody.position.set(0, 0, 0);
+        world.addBody(groundBody);
+        sc.addVisual(groundBody);
+
+        // plane -x
+        var planeShapeXmin = new CANNON.Plane();
+        var planeXmin = new CANNON.Body({ mass: 0 });
+        planeXmin.addShape(planeShapeXmin);
+        planeXmin.quaternion.setFromAxisAngle(new CANNON.Vec3(0, 1, 0), Math.PI / 2);
+        planeXmin.position.set(-5, 0, 0);
+        world.addBody(planeXmin);
+
+        // Plane +x
+        var planeShapeXmax = new CANNON.Plane();
+        var planeXmax = new CANNON.Body({ mass: 0 });
+        planeXmax.addShape(planeShapeXmax);
+        planeXmax.quaternion.setFromAxisAngle(new CANNON.Vec3(0, 1, 0), -Math.PI / 2);
+        planeXmax.position.set(5, 0, 0);
+        world.addBody(planeXmax);
+
+        // Plane -y
+        var planeShapeYmin = new CANNON.Plane();
+        var planeYmin = new CANNON.Body({ mass: 0 });
+        planeYmin.addShape(planeShapeYmin);
+        planeYmin.quaternion.setFromAxisAngle(new CANNON.Vec3(1, 0, 0), -Math.PI / 2);
+        planeYmin.position.set(0, -5, 0);
+        world.addBody(planeYmin);
+
+        // Plane +y
+        var planeShapeYmax = new CANNON.Plane();
+        var planeYmax = new CANNON.Body({ mass: 0 });
+        planeYmax.addShape(planeShapeYmax);
+        planeYmax.quaternion.setFromAxisAngle(new CANNON.Vec3(1, 0, 0), Math.PI / 2);
+        planeYmax.position.set(0, 5, 0);
+        world.addBody(planeYmax);
+
+        var bodies = [];
+        var i = 0;
+        sc.addTimer(setInterval(function () {
+            // Sphere
+            i++;
+            var sphereShape = new CANNON.Sphere(size);
+            var b1 = new CANNON.Body({
+                mass: 5,
+                position: new CANNON.Vec3(
+                    2 * size * Math.sin(i),
+                    2 * size * Math.cos(i),
+                    7 * 2 * size
+                )
+            });
+            b1.addShape(sphereShape);
+            world.addBody(b1);
+            sc.addVisual(b1);
+            bodies.push(b1);
+
+            if (bodies.length > 80) {
+                var b = bodies.shift();
+                sc.removeVisual(b);
+                world.remove(b);
+            }
+        }, 100));
+        window.addEventListener('resize', function (e) {
+            $.resizeScene(config.id);
+        })
+        document.addEventListener('keypress', function (e) {
+            var sc = $.getScene(config.id);
+            if (sc && e.keyCode) {
+                // console.log("on key:", e.keyCode, e.code);
+                switch (e.keyCode) {
+                    case 32: // Space - restart
+                        sc.restartCurrentScene();
+                        break;
+                    case 104: // h - toggle widgets
+                        sc.switchFPS();
+                        break;
+                    case 97: // a - AABBs
+                        sc.settings.aabbs = !sc.settings.aabbs;
+                        break;
+                    case 99: // c - constraints
+                        sc.settings.constraints = !sc.settings.constraints;
+                        break;
+                    case 112: // p
+                        sc.settings.paused = !sc.settings.paused;
+                        break;
+                    case 109: // m - toggle materials
+                        var idx = sc.renderModes.indexOf(sc.settings.rendermode);
+                        idx++;
+                        idx = idx % sc.renderModes.length; // begin at 0 if we exceeded number of modes
+                        sc.setRenderMode(sc.renderModes[idx]);
+                        break;
+                }
+            }
+        });
+        // 初始化菜单
+        var tmp = '{{#btns}}<button onclick="{{{func}}}">{{name}}</button>{{/btns}}';
+        var data = {
+            "btns": [
+                {
+                    "name": "帮助",
+                    "func": "layer.open({title: '操作指引',area:['300px', 'auto'],content: '<p>鼠标左键拖动转换视角</p><p>鼠标右键拖动移动场景</p><p>鼠标中键缩放场景</p><p>鼠标拖动转换视角</p><p>按键H 隐藏帧率</p><p>空格 重启场景</p><p>按键A 打开AABB盒</p><p>按键P 暂停继续</p><p>按键M 切换渲染模式</p><p>按键C 删除物理约束</p>'});"
+                },
+                {
+                    "name": "隐藏FPS",
+                    "func": "$.getScene().switchFPS('hide');"
+                },
+                {
+                    "name": "显示FPS",
+                    "func": "$.getScene().switchFPS('show');"
+                },
+                {
+                    "name": "销毁场景",
+                    "func": "$.removeScene();"
+                }
+            ]
+        }
+        $('.menu').html(Mustache.render(tmp, data));
+    </script>
+</body>
+
+</html>
